@@ -1,0 +1,368 @@
+Project Structure:
+
+book-management-automation-project/
+BookApp-Automation/
+├── backend/
+│   └── index.js, package.json, ...
+├── frontend/
+│   └── src/, public/, package.json, ...
+├── tests/
+│   └── selenium/
+│       ├── test_login.py
+│       ├── test_create_book.py
+│       ├── test_edit_book.py
+│       ├── test_delete_book.py
+├── postman/
+│   └── book-api-tests.postman_collection.json
+├── README.md
+├── TEST_PLAN.md
+
+=== FILE CONTENTS ===
+
+Folder--> backend/index.js:
+
+const express = require("express");
+const cors = require("cors");
+const app = express();
+const PORT = 5000;
+
+app.use(cors());
+app.use(express.json());
+
+let users = [{ username: "admin", password: "admin123" }];
+let books = [
+  { id: 1, title: "Book One", author: "Author A" },
+  { id: 2, title: "Book Two", author: "Author B" },
+];
+
+// Login endpoint
+app.post("/login", (req, res) => {
+  const { username, password } = req.body;
+  const user = users.find(u => u.username === username && u.password === password);
+  if (user) return res.status(200).json({ success: true });
+  res.status(401).json({ success: false });
+});
+
+// Get books
+app.get("/items", (req, res) => {
+  res.json(books);
+});
+
+// Create book
+app.post("/items", (req, res) => {
+  const { title, author } = req.body;
+  const id = books.length ? books[books.length - 1].id + 1 : 1;
+  const newBook = { id, title, author };
+  books.push(newBook);
+  res.status(201).json(newBook);
+});
+
+// Update book
+app.put("/items/:id", (req, res) => {
+  const { id } = req.params;
+  const { title, author } = req.body;
+  const book = books.find(b => b.id === parseInt(id));
+  if (!book) return res.status(404).json({ message: "Not found" });
+  book.title = title;
+  book.author = author;
+  res.json(book);
+});
+
+// Delete book
+app.delete("/items/:id", (req, res) => {
+  books = books.filter(b => b.id !== parseInt(req.params.id));
+  res.status(204).send();
+});
+
+app.listen(PORT, () => console.log(`Backend running at http://localhost:${PORT}`));
+================================================
+Folder -- > backend/package.json:
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2"
+  }
+}
+=================================================
+Folder --> frontend/src/index.js:
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './index.css';
+import App from './App';
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+Folder -->> frontend/src/index.css:
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #f8f9fa;
+}
+=====================================================
+Folder --> frontend/src/App.js:
+import React from 'react';
+import Login from './components/Login';
+import BookList from './components/BookList';
+
+function App() {
+  const [isLoggedIn, setIsLoggedIn] = React.useState(false);
+
+  return (
+    <div className="App">
+      {isLoggedIn ? <BookList /> : <Login onLogin={() => setIsLoggedIn(true)} />}
+    </div>
+  );
+}
+
+export default App;
+====================================================
+Folder -- >> frontend/src/components/Login.js:
+import React, { useState } from 'react';
+
+function Login({ onLogin }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+
+  const handleSubmit = async e => {
+    e.preventDefault();
+    const res = await fetch('http://localhost:5000/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    if (res.ok) onLogin();
+    else alert('Invalid credentials');
+  };
+
+  return (
+    <form onSubmit={handleSubmit}>
+      <h2>Login</h2>
+      <input type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} />
+      <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} />
+      <button type="submit">Login</button>
+    </form>
+  );
+}
+
+export default Login;
+=====================================================
+Folder --> frontend/src/components/BookList.js:
+import React, { useEffect, useState } from 'react';
+
+function BookList() {
+  const [books, setBooks] = useState([]);
+  const [newBook, setNewBook] = useState({ title: '', author: '' });
+
+  useEffect(() => {
+    fetch('http://localhost:5000/items')
+      .then(res => res.json())
+      .then(setBooks);
+  }, []);
+
+  const createBook = async () => {
+    const res = await fetch('http://localhost:5000/items', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newBook)
+    });
+    const data = await res.json();
+    setBooks([...books, data]);
+  };
+
+  const editBook = async (id, updatedBook) => {
+    await fetch(`http://localhost:5000/items/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updatedBook)
+    });
+    setBooks(books.map(b => (b.id === id ? { ...b, ...updatedBook } : b)));
+  };
+
+  const deleteBook = async id => {
+    await fetch(`http://localhost:5000/items/${id}`, { method: 'DELETE' });
+    setBooks(books.filter(b => b.id !== id));
+  };
+
+  return (
+    <div>
+      <h2>Books</h2>
+      <ul>
+        {books.map(book => (
+          <li key={book.id}>
+            {book.title} - {book.author}
+            <button onClick={() => editBook(book.id, { title: prompt('Title:', book.title), author: prompt('Author:', book.author) })}>Edit</button>
+            <button onClick={() => deleteBook(book.id)}>Delete</button>
+          </li>
+        ))}
+      </ul>
+      <input placeholder="Title" value={newBook.title} onChange={e => setNewBook({ ...newBook, title: e.target.value })} />
+      <input placeholder="Author" value={newBook.author} onChange={e => setNewBook({ ...newBook, author: e.target.value })} />
+      <button onClick={createBook}>Add Book</button>
+    </div>
+  );
+}
+
+export default BookList;
+====================================================
+Folder -->test - test_login.py
+
+from selenium.webdriver.common.by import By
+from utils import start_driver, login
+import time
+
+def test_create_book():
+    driver = start_driver()
+    login(driver)
+
+    driver.find_element(By.XPATH, "//input[@placeholder='Title']").send_keys("Selenium Book")
+    driver.find_element(By.XPATH, "//input[@placeholder='Author']").send_keys("Selenium Author")
+    driver.find_element(By.XPATH, "//button[text()='Add']").click()
+    time.sleep(1)
+
+    assert "Selenium Book" in driver.page_source
+    print(" Book created successfully.")
+    driver.quit()
+------------------------------------------
+from selenium.webdriver.common.by import By
+from utils import start_driver, login
+import time
+
+def test_edit_book():
+    driver = start_driver()
+    login(driver)
+
+    driver.find_element(By.XPATH, "//li[contains(text(),'Selenium Book')]/button[text()='Edit']").click()
+    title_input = driver.find_element(By.XPATH, "//input[@placeholder='Title']")
+    title_input.clear()
+    title_input.send_keys("Updated Selenium Book")
+    driver.find_element(By.XPATH, "//button[text()='Update']").click()
+    time.sleep(1)
+
+    assert "Updated Selenium Book" in driver.page_source
+    print(" Book updated successfully.")
+    driver.quit()
+----------------------------------------
+from selenium.webdriver.common.by import By
+from utils import start_driver, login
+import time
+
+def test_delete_book():
+    driver = start_driver()
+    login(driver)
+
+    driver.find_element(By.XPATH, "//li[contains(text(),'Updated Selenium Book')]/button[text()='Delete']").click()
+    time.sleep(1)
+
+    assert "Updated Selenium Book" not in driver.page_source
+    print(" Book deleted successfully.")
+    driver.quit()
+-----------------------------------------
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+import time
+
+def start_driver():
+    options = Options()
+    options.add_argument("--start-maximized")
+    driver = webdriver.Chrome(options=options)
+    driver.get("http://localhost:3000")
+    return driver
+
+def login(driver, username="admin", password="admin123"):
+    driver.find_element(By.XPATH, "//input[@placeholder='Username']").send_keys(username)
+    driver.find_element(By.XPATH, "//input[@placeholder='Password']").send_keys(password)
+    driver.find_element(By.XPATH, "//button[text()='Login']").click()
+    time.sleep(1)
+-----------------------------------
+Forlder --> Postman - book-api-tests.postman_collection.json
+
+{
+  "info": {
+    "name": "Book API Tests",
+    "_postman_id": "f3a8b100-0000-4000-b000-000000000001",
+    "description": "Postman collection for testing Book API backend",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Login - Valid",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "http://localhost:5000/login", "host": ["localhost"], "port": "5000", "path": ["login"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{ \"username\": \"admin\", \"password\": \"admin123\" }"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Login - Invalid",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "http://localhost:5000/login", "host": ["localhost"], "port": "5000", "path": ["login"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{ \"username\": \"admin\", \"password\": \"wrongpass\" }"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "GET All Books",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "http://localhost:5000/items", "host": ["localhost"], "port": "5000", "path": ["items"] }
+      },
+      "response": []
+    },
+    {
+      "name": "Create Book",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "http://localhost:5000/items", "host": ["localhost"], "port": "5000", "path": ["items"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{ \"title\": \"New Book\", \"author\": \"New Author\" }"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Edit Book ID 1",
+      "request": {
+        "method": "PUT",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "http://localhost:5000/items/1", "host": ["localhost"], "port": "5000", "path": ["items", "1"] },
+        "body": {
+          "mode": "raw",
+          "raw": "{ \"title\": \"Updated Book 1\", \"author\": \"Updated Author\" }"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Delete Book ID 1",
+      "request": {
+        "method": "DELETE",
+        "url": { "raw": "http://localhost:5000/items/1", "host": ["localhost"], "port": "5000", "path": ["items", "1"] }
+      },
+      "response": []
+    }
+  ]
+}
